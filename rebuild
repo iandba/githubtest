@@ -1,0 +1,44 @@
+--rebuild any indexes or index partitions for the current user
+set serveroutput on
+declare
+  procedure ddl (str in varchar2) is
+  begin
+    execute immediate (str);
+    dbms_output.put_line (str);
+  end ddl;
+begin
+  for t in (select table_name from user_tables order by table_name) loop  
+    for i in ( 
+        select index_name, partition_name, 'partition' ddl_type
+        from user_ind_partitions
+        where (index_name) in 
+           ( select index_name
+             from   user_indexes
+             where  table_name  = t.table_name
+           )
+        and status = 'UNUSABLE'
+        union all
+        select index_name, subpartition_name, 'subpartition' ddl_type
+        from user_ind_subpartitions
+        where (index_name) in 
+           ( select index_name
+             from   user_indexes
+             where  table_name  = t.table_name
+           )
+        and status = 'UNUSABLE'
+        union all
+        select index_name, null, null
+        from user_indexes
+        where table_name  = t.table_name
+        and status = 'UNUSABLE'
+    )
+    loop
+      if i.ddl_type is null then
+        ddl('alter index '||i.index_name||' rebuild');
+      else
+        ddl('alter index '||i.index_name||' rebuild '||i.ddl_type||' '||i.partition_name);
+      end if;
+    end loop;
+  end loop;
+end;
+/
